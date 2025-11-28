@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // ---------------------------
-  // MAP ページ
+  // MAPページ
   // ---------------------------
   const initMapPage = async () => {
     const me = await fetchMe();
@@ -86,28 +86,169 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("goto-folder").onclick = () =>
       alert("フォルダページは後で作ります");
 
-    // Leaflet JS をロード
+    // Leaflet
     const script = document.createElement("script");
     script.src = "https://unpkg.com/leaflet/dist/leaflet.js";
 
     script.onload = () => {
       const map = L.map("map");
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
 
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
-
           map.setView([lat, lng], 16);
-
-          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            maxZoom: 19,
-          }).addTo(map);
-
           L.marker([lat, lng]).addTo(map).bindPopup("あなたの現在地");
         },
         () => alert("現在地を取得できませんでした")
       );
+
+      // ---------------------------
+      // 要素
+      // ---------------------------
+      const cameraVideo = document.getElementById("camera-video");
+      const cameraCanvas = document.getElementById("camera-canvas");
+      const startBtn = document.getElementById("camera-start");
+      const shootBtn = document.getElementById("camera-shoot");
+      const closeBtn = document.getElementById("camera-close");
+      const titleSection = document.getElementById("title-section");
+      const photoTitleInput = document.getElementById("photo-title");
+      const saveTitleBtn = document.getElementById("save-title");
+      const arPreview = document.getElementById("ar-preview");
+      const arImage = document.getElementById("ar-image");
+      const arClose = document.getElementById("ar-close");
+
+      let stream;
+      let currentPhotoData = null;
+      let currentLatLng = null;
+      let markersById = new Map();
+
+      // ---------------------------
+      // カメラ起動
+      // ---------------------------
+      startBtn.onclick = async () => {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+            audio: false,
+          });
+          cameraVideo.srcObject = stream;
+          cameraVideo.style.display = "block";
+          shootBtn.classList.remove("hidden");
+          closeBtn.classList.remove("hidden");
+          startBtn.classList.add("hidden");
+        } catch (err) {
+          alert("カメラを使用できません: " + err.message);
+        }
+      };
+
+      // ---------------------------
+      // カメラ閉じる
+      // ---------------------------
+      closeBtn.onclick = () => {
+        if (stream) {
+          stream.getTracks().forEach((t) => t.stop());
+        }
+        cameraVideo.style.display = "none";
+        shootBtn.classList.add("hidden");
+        closeBtn.classList.add("hidden");
+        startBtn.classList.remove("hidden");
+      };
+
+      // ---------------------------
+      // 撮影
+      // ---------------------------
+      shootBtn.onclick = () => {
+        cameraCanvas.width = 1920;
+        cameraCanvas.height = 1080;
+        const ctx = cameraCanvas.getContext("2d");
+        ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+        currentPhotoData = cameraCanvas.toDataURL("image/jpeg", 0.9);
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            currentLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            // カメラUI閉じる
+            closeBtn.onclick();
+            // タイトル入力表示
+            titleSection.classList.remove("hidden");
+            photoTitleInput.value = "";
+          },
+          () => alert("撮影位置の取得に失敗しました")
+        );
+      };
+
+// タイトル保存
+saveTitleBtn.onclick = async () => {
+  const title = photoTitleInput.value.trim();
+  if (!currentPhotoData) return alert("写真がありません");
+  if (!title) return alert("タイトルを入力してください");
+
+  const fd = new FormData();
+  const blob = await (await fetch(currentPhotoData)).blob();
+  fd.append("image", blob, "photo.jpg");
+  fd.append("lat", currentLatLng.lat);
+  fd.append("lng", currentLatLng.lng);
+  fd.append("title", title);
+
+  const res = await fetch("/api/photo/upload", { method: "POST", body: fd });
+  const j = await res.json();
+  if (!j.success) return alert(j.message || "保存失敗");
+
+  // マーカー追加
+  const marker = L.marker([currentLatLng.lat, currentLatLng.lng]).addTo(map);
+  marker.bindPopup(title); // マウスオーバーでタイトル表示
+  marker.on("click", () => {
+    arImage.style.backgroundImage = `url(${j.filepath})`;
+    arPreview.classList.remove("hidden");
+  });
+
+  markersById.set(j.id, { marker, data: { title, filepath: j.filepath } });
+
+  // タイトル入力非表示
+  titleSection.classList.add("hidden");
+  currentPhotoData = null;
+  currentLatLng = null;
+};
+
+      // ---------------------------
+      // AR閉じる
+      // ---------------------------
+      arClose.onclick = () => {
+        arPreview.classList.add("hidden");
+      };
+
+      // ---------------------------
+      // 写真復元
+      // ---------------------------
+      const loadPhotos = async () => {
+        const res = await fetch("/api/photo/list");
+        const j = await res.json();
+        if (!j.success) return;
+        j.photos.forEach((p) => {
+          const marker = L.marker([p.latitude, p.longitude]).addTo(map);
+          marker.bindPopup(p.title || "");
+          marker.on("click", () => {
+            arImage.style.backgroundImage = `url(${p.filepath})`;
+            arPreview.classList.remove("hidden");
+          });
+          markersById.set(p.id, { marker, data: p });
+        });
+      };
+      loadPhotos();
+
+      // ---------------------------
+      // 擬似AR
+      // ---------------------------
+      window.addEventListener("deviceorientation", (event) => {
+        if (arPreview.classList.contains("hidden")) return;
+        const gamma = event.gamma ?? 0;
+        const beta = event.beta ?? 0;
+        const x = ((beta + 90) / 180) * 100;
+        const y = ((gamma + 45) / 90) * 100;
+        arImage.style.backgroundPosition = `${x}% ${y}%`;
+      });
     };
 
     document.body.appendChild(script);
@@ -129,7 +270,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else if (page === "map") {
       const me = await fetchMe();
       if (!me.loggedIn) return (window.location.hash = "#login");
-
       appContainer.innerHTML = await (await fetch("/pages/map.html")).text();
       initMapPage();
     }
