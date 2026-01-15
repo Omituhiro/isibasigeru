@@ -73,160 +73,165 @@ const initSNS = async () => {
     const selectionGrid = document.getElementById("my-folder-selection");
     const commentModal = document.getElementById("commentModal");
 
-    // モーダルを閉じる関数（グローバルに公開するか、ここで紐付けるぜ）
+    // モーダルを閉じる関数
     window.closePostSelector = () => selectorModal.style.display = "none";
     window.closeCommentModal = () => commentModal.style.display = "none";
 
     // --- 🎨 描画エンジン: render関数 ---
     const render = (query = "") => {
-      if (!feed) return;
-      feed.innerHTML = "";
+        if (!feed) return;
+        feed.innerHTML = "";
 
-      // ① 検索フィルタリング & ② 最新順(降順)にソート
-      const displayPosts = allPosts
-        .filter(
-          (p) =>
-            (p.caption || "").toLowerCase().includes(query.toLowerCase()) ||
-            (p.user || "").toLowerCase().includes(query.toLowerCase())
-        )
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const displayPosts = allPosts
+            .filter(
+                (p) =>
+                    (p.caption || "").toLowerCase().includes(query.toLowerCase()) ||
+                    (p.user || "").toLowerCase().includes(query.toLowerCase())
+            )
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-      if (displayPosts.length === 0) {
-        feed.innerHTML = `<p class="empty-msg" style="text-align:center; padding:20px;">投稿が見つからないぜ、ブラザー！</p>`;
-        return;
-      }
-
-      displayPosts.forEach((p) => {
-        const liked = myLikes.has(p.id);
-        const card = document.createElement("article");
-        card.className = "post-card";
-
-        // 本人確認フラグ（削除ボタン：ゴミ箱アイコン）
-        const deleteBtnHtml = p.is_mine
-          ? `<button class="action-btn del-post-btn" title="撤去"><i class="fas fa-trash"></i></button>`
-          : "";
-
-        card.innerHTML = `
-          <div class="post-header">
-            <span class="username">@${p.user || "名無しの権兵衛"}</span>
-          </div>
-          <div class="post-image" style="background-image:url('${p.filepath}')"></div>
-          <div class="post-footer">
-            <div class="post-actions">
-              <button class="action-btn like-btn ${liked ? "liked" : ""}">
-                <i class="${liked ? "fas" : "far"} fa-heart"></i>
-                <span class="like-count">${p.likes || 0}</span>
-              </button>
-              ${deleteBtnHtml}
-            </div>
-            <div class="post-caption"><b>@${p.user}</b> ${p.caption || ""}</div>
-          </div>`;
-
-        // 🔥 いいね！ボタン
-        card.querySelector(".like-btn").onclick = async () => {
-          try {
-            await api.post("/api/like", {
-              post_id: p.id,
-              action: liked ? "unlike" : "like",
-            });
-            await sync(); // 同期して最新のmyLikesとallPostsを取得
-            render(searchInput.value); // 再描画
-          } catch (err) {
-            console.error("いいねに失敗だぜ", err);
-          }
-        };
-
-        // 🗑️ 削除ボタン
-        if (p.is_mine) {
-          card.querySelector(".del-post-btn").onclick = async () => {
-            if (!confirm("この投稿を剥がして処分するかい？")) return;
-            const res = await api.post("/api/sns/delete", { post_id: p.id });
-            if (res.success) {
-              await sync();
-              render(searchInput.value);
-            }
-          };
+        if (displayPosts.length === 0) {
+            feed.innerHTML = `<p class="empty-msg" style="text-align:center; padding:20px;">投稿が見つからないぜ、ブラザー！</p>`;
+            return;
         }
-        feed.appendChild(card);
-      });
-    };
+
+        displayPosts.forEach((p) => {
+            const liked = myLikes.has(p.id);
+            const card = document.createElement("article");
+            card.className = "post-card";
+
+            const deleteBtnHtml = p.is_mine
+                ? `<button class="action-btn del-post-btn" title="撤去"><i class="fas fa-trash"></i></button>`
+                : "";
+
+            card.innerHTML = `
+                <div class="post-header">
+                    <span class="username">@${p.user || "名無しの権兵衛"}</span>
+                </div>
+                <div class="post-image" style="background-image:url('${p.filepath}')"></div>
+                <div class="post-footer">
+                    <div class="post-actions">
+                        <button class="action-btn like-btn ${liked ? "liked" : ""}">
+                            <i class="${liked ? "fas" : "far"} fa-heart"></i>
+                            <span class="like-count">${p.likes || 0}</span>
+                        </button>
+                        ${deleteBtnHtml}
+                    </div>
+                    <div class="post-caption"><b>@${p.user}</b> ${p.caption || ""}</div>
+                </div>`;
+
+            // 🔥 いいね！ボタン
+            card.querySelector(".like-btn").onclick = async () => {
+                try {
+                    await api.post("/api/like", {
+                        post_id: p.id,
+                        action: liked ? "unlike" : "like",
+                    });
+                    await sync();
+                    render(searchInput.value);
+                } catch (err) {
+                    console.error("いいねに失敗だぜ", err);
+                }
+            };
+
+            // 🗑️ 削除ボタン（本人の投稿のみ）
+            if (p.is_mine) {
+                const delBtn = card.querySelector(".del-post-btn");
+                if (delBtn) {
+                    delBtn.onclick = async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!confirm("この投稿を剥がして処分するかい？")) return;
+                        try {
+                            const res = await api.post("/api/sns/delete", { post_id: p.id });
+                            if (res.success) {
+                                alert("撤去完了だぜ！");
+                                await sync();
+                                render(searchInput.value);
+                            } else {
+                                alert("削除に失敗したぜ。");
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            alert("通信エラーだ！");
+                        }
+                    };
+                }
+            }
+            feed.appendChild(card); // 👈 これを忘れるとカードが表示されないぜ！
+        }); // 👈 displayPosts.forEach の閉じ
+    }; // 👈 render 関数の閉じ
 
     // --- 📂 投稿フロー：蔵から写真を選ぶ ---
     if (openBtn) {
-      openBtn.onclick = async () => {
-        selectorModal.style.display = "flex";
-        selectionGrid.innerHTML = '<p class="loading-msg">ファイルを物色中...</p>';
-        
-        const j = await api.get("/api/photo/list");
-        if (j.success && j.photos.length > 0) {
-          selectionGrid.innerHTML = "";
-          j.photos.forEach((photo) => {
-            const thumb = document.createElement("div");
-            thumb.className = "selectable-thumb";
-            thumb.style.backgroundImage = `url(${photo.filepath})`;
-            thumb.onclick = () => {
-              selectorModal.style.display = "none";
-              openPublishModal(photo);
-            };
-            selectionGrid.appendChild(thumb);
-          });
-        } else {
-          selectionGrid.innerHTML = "<p style='grid-column: 1/-1; text-align:center;'>ファイルが空だ！まずは写真を撮ってきな！青二才！！</p>";
-        }
-      };
+        openBtn.onclick = async () => {
+            selectorModal.style.display = "flex";
+            selectionGrid.innerHTML = '<p class="loading-msg">ファイルを物色中...</p>';
+            const j = await api.get("/api/photo/list");
+            if (j.success && j.photos.length > 0) {
+                selectionGrid.innerHTML = "";
+                j.photos.forEach((photo) => {
+                    const thumb = document.createElement("div");
+                    thumb.className = "selectable-thumb";
+                    thumb.style.backgroundImage = `url(${photo.filepath})`;
+                    thumb.onclick = () => {
+                        selectorModal.style.display = "none";
+                        openPublishModal(photo);
+                    };
+                    selectionGrid.appendChild(thumb);
+                });
+            } else {
+                selectionGrid.innerHTML = "<p style='grid-column: 1/-1; text-align:center;'>ファイルが空だ！まずは写真を撮ってきな！青二才！！</p>";
+            }
+        };
     }
 
     // --- 🚀 最終投稿：キャプションを添えて世界へ ---
     const openPublishModal = (photo) => {
-      const preview = document.getElementById("selected-preview");
-      if (preview) preview.style.backgroundImage = `url(${photo.filepath})`;
-      commentModal.style.display = "flex";
-
-      const finalPostBtn = document.getElementById("final-post-btn");
-
-      finalPostBtn.onclick = async () => {
-        const caption = document.getElementById("commentText").value;
-
-        finalPostBtn.disabled = true;
-        finalPostBtn.innerText = "シェア中...";
-
-        try {
-          const res = await api.post("/api/sns/post", {
-            photo_id: photo.id,
-            caption: caption,
-          });
-
-          if (res.success) {
-            document.getElementById("commentText").value = "";
-            commentModal.style.display = "none";
-            await sync();
-            render();
-            alert("投稿できたべ");
-          } else {
-            alert("しくじった： " + res.message);
-          }
-        } catch (err) {
-          alert("通信エラーだ、もう一度頼む！");
-        } finally {
-          finalPostBtn.disabled = false;
-          finalPostBtn.innerText = "シェアする";
-        }
-      };
+        const preview = document.getElementById("selected-preview");
+        if (preview) preview.style.backgroundImage = `url(${photo.filepath})`;
+        commentModal.style.display = "flex";
+        const finalPostBtn = document.getElementById("final-post-btn");
+        finalPostBtn.onclick = async () => {
+            const caption = document.getElementById("commentText").value;
+            finalPostBtn.disabled = true;
+            finalPostBtn.innerText = "シェア中...";
+            try {
+                const res = await api.post("/api/sns/post", {
+                    photo_id: photo.id,
+                    caption: caption,
+                });
+                if (res.success) {
+                    document.getElementById("commentText").value = "";
+                    commentModal.style.display = "none";
+                    await sync();
+                    render();
+                    alert("投稿できたべ");
+                } else {
+                    alert("しくじった： " + res.message);
+                }
+            } catch (err) {
+                alert("通信エラーだ、もう一度頼む！");
+            } finally {
+                finalPostBtn.disabled = false;
+                finalPostBtn.innerText = "シェアする";
+            }
+        };
     };
 
     // 🔍 検索
     if (searchInput) {
-      searchInput.oninput = (e) => render(e.target.value);
+        searchInput.oninput = (e) => render(e.target.value);
     }
 
     // 🗺️ 地図へ戻る
     const backMapBtn = document.getElementById("back-map");
     if (backMapBtn) {
-      backMapBtn.onclick = () => (location.hash = "#map");
+        backMapBtn.onclick = () => (location.hash = "#map");
     }
 
     render();
-  };
+}; // 👈 initSNS 関数の閉じ
   // モーダルクローズ関数
   window.closePostSelector = () =>
     (document.getElementById("postSelectorModal").style.display = "none");
