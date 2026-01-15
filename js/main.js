@@ -92,7 +92,7 @@ const initSNS = async () => {
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
       if (displayPosts.length === 0) {
-        feed.innerHTML = `<p class="empty-msg" style="text-align:center; padding:20px;">瓦版が見つからないぜ、ブラザー！</p>`;
+        feed.innerHTML = `<p class="empty-msg" style="text-align:center; padding:20px;">投稿が見つからないぜ、ブラザー！</p>`;
         return;
       }
 
@@ -139,7 +139,7 @@ const initSNS = async () => {
         // 🗑️ 削除ボタン
         if (p.is_mine) {
           card.querySelector(".del-post-btn").onclick = async () => {
-            if (!confirm("この瓦版を剥がして処分するかい？")) return;
+            if (!confirm("この投稿を剥がして処分するかい？")) return;
             const res = await api.post("/api/sns/delete", { post_id: p.id });
             if (res.success) {
               await sync();
@@ -155,7 +155,7 @@ const initSNS = async () => {
     if (openBtn) {
       openBtn.onclick = async () => {
         selectorModal.style.display = "flex";
-        selectionGrid.innerHTML = '<p class="loading-msg">蔵を物色中...</p>';
+        selectionGrid.innerHTML = '<p class="loading-msg">ファイルを物色中...</p>';
         
         const j = await api.get("/api/photo/list");
         if (j.success && j.photos.length > 0) {
@@ -171,7 +171,7 @@ const initSNS = async () => {
             selectionGrid.appendChild(thumb);
           });
         } else {
-          selectionGrid.innerHTML = "<p style='grid-column: 1/-1; text-align:center;'>蔵が空だ！まずは写し絵を撮ってきな！</p>";
+          selectionGrid.innerHTML = "<p style='grid-column: 1/-1; text-align:center;'>ファイルが空だ！まずは写真を撮ってきな！青二才！！</p>";
         }
       };
     }
@@ -201,7 +201,7 @@ const initSNS = async () => {
             commentModal.style.display = "none";
             await sync();
             render();
-            alert("世界に瓦版を貼ったぜ、ブラザー！");
+            alert("投稿できたべ");
           } else {
             alert("しくじった： " + res.message);
           }
@@ -236,10 +236,10 @@ const initSNS = async () => {
   // 1. 巡礼地図ページの初期化 (initMapPage)
   // ==========================================
 const initMapPage = async () => {
-    console.log("🚀 システム起動：地図とUIの準備を開始します");
+    console.log("🚀 システム起動：地図とAIコンシェルジュの準備を開始します");
     const loadingScreen = document.getElementById("loading-screen");
 
-    // データの同期（ここで最新の latitude, longitude を含む allPosts を取得）
+    // データの同期（最新の latitude, longitude を含む allPosts を取得）
     await sync();
 
     // --- UI要素の取得 ---
@@ -250,157 +250,204 @@ const initMapPage = async () => {
     const shootBtn = document.getElementById("camera-shoot");
     const saveBtn = document.getElementById("camera-save-edit");
     const video = document.getElementById("camera-video");
-    const canvas = document.getElementById("camera-canvas");
-    const tools = document.getElementById("graffiti-tools");
 
     // --- モード切替：写し絵（カメラ）開始 ---
     if (startBtn) {
-      startBtn.onclick = async () => {
-        footerDefault?.classList.add("hidden");
-        footerCamera?.classList.remove("hidden");
-        shootBtn?.classList.remove("hidden");
-        saveBtn?.classList.add("hidden");
+        startBtn.onclick = async () => {
+            footerDefault?.classList.add("hidden");
+            footerCamera?.classList.remove("hidden");
+            shootBtn?.classList.remove("hidden");
+            saveBtn?.classList.add("hidden");
 
-        if (video) {
-          video.style.display = "block";
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: "environment" },
-            });
-            video.srcObject = stream;
-          } catch (err) {
-            alert("カメラが起動できねぇぜ！");
-          }
-        }
-      };
+            if (video) {
+                video.style.display = "block";
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: "environment" },
+                    });
+                    video.srcObject = stream;
+                } catch (err) {
+                    alert("カメラが起動できねぇぜ！");
+                }
+            }
+        };
     }
 
     // --- モード切替：中止して地図に戻る ---
     if (closeBtn) {
-      closeBtn.onclick = () => {
-        if (video && video.srcObject) {
-          video.srcObject.getTracks().forEach((track) => track.stop());
-        }
-        location.reload();
-      };
+        closeBtn.onclick = () => {
+            if (video && video.srcObject) {
+                video.srcObject.getTracks().forEach((track) => track.stop());
+            }
+            location.reload();
+        };
     }
 
     // --- 地図 (Leaflet) のセットアップ ---
     const script = document.createElement("script");
     script.src = "https://unpkg.com/leaflet/dist/leaflet.js";
     script.onload = async () => {
-      const map = L.map("map");
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+        const map = L.map("map");
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
-      // ピンのアイコン定義
-      const icons = {
-        red: L.icon({
-          iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-          iconSize: [25, 41], iconAnchor: [12, 41],
-        }),
-        blue: L.icon({
-          iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png",
-          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-          iconSize: [25, 41], iconAnchor: [12, 41],
-        }),
-        yellow: L.icon({
-          iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-gold.png",
-          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-          iconSize: [25, 41], iconAnchor: [12, 41],
-        }),
-      };
+        // ピンのアイコン定義
+        const icons = {
+            red: L.icon({
+                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+                shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+                iconSize: [25, 41], iconAnchor: [12, 41],
+            }),
+            blue: L.icon({
+                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png",
+                shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+                iconSize: [25, 41], iconAnchor: [12, 41],
+            }),
+            yellow: L.icon({
+                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-gold.png",
+                shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+                iconSize: [25, 41], iconAnchor: [12, 41],
+            }),
+        };
 
-      // ① 現在地（赤ピン）
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-          map.setView([latitude, longitude], 15);
-          L.marker([latitude, longitude], { icon: icons.red })
-            .addTo(map)
-            .bindPopup("おぬしの現在地");
-        },
-        () => map.setView([35.6812, 139.7671], 13)
-      );
+        // ① 現在地（赤ピン）
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                map.setView([latitude, longitude], 15);
+                L.marker([latitude, longitude], { icon: icons.red })
+                    .addTo(map)
+                    .bindPopup("おぬしの現在地");
+            },
+            () => map.setView([35.6812, 139.7671], 13)
+        );
 
-      // 🔥 ② 【修正完了】いいねした投稿（黄ピン）
-      allPosts.forEach((p) => {
-        // サーバーが送ってくれる latitude / longitude を直接使う
-        const lat = p.latitude;
-        const lng = p.longitude;
-
-        if (myLikes.has(p.id) && lat && lng) {
-          const yellowMarker = L.marker([lat, lng], { icon: icons.yellow }).addTo(map);
-          
-          yellowMarker.on("click", () => {
-            const ar = document.getElementById("ar-preview");
-            const arImg = document.getElementById("ar-image");
-            const arDeleteBtn = document.getElementById("ar-delete");
-
-            if (ar && arImg) {
-              arImg.style.backgroundImage = `url(${p.filepath})`;
-              ar.classList.remove("hidden");
-              
-              // 他人の投稿なので削除ボタンは隠す
-              if (arDeleteBtn) arDeleteBtn.classList.add("hidden");
-            }
-          });
-        }
-      });
-
-      // ③ 自分の撮った写し絵（青ピン）
-      const j = await api.get("/api/photo/list");
-      if (j.success) {
-        j.photos.forEach((p) => {
-          const lat = p.latitude || p.lat;
-          const lng = p.longitude || p.lng;
-          if (lat && lng) {
-            const m = L.marker([lat, lng], { icon: icons.blue }).addTo(map);
-            
-            m.on("click", () => {
-              const ar = document.getElementById("ar-preview");
-              const arImg = document.getElementById("ar-image");
-              const arDeleteBtn = document.getElementById("ar-delete");
-
-              if (ar && arImg) {
-                arImg.style.backgroundImage = `url(${p.filepath})`;
-                ar.classList.remove("hidden");
-
-                if (arDeleteBtn) {
-                  arDeleteBtn.classList.remove("hidden"); // 自分のは表示
-                  arDeleteBtn.onclick = async () => {
-                    if (!confirm("この場所の記録を蔵から抹消するかい、ブラザー？")) return;
-                    try {
-                      const res = await api.del(`/api/photo/${p.id}`);
-                      if (res.success) {
-                        ar.classList.add("hidden");
-                        map.removeLayer(m);
-                        alert("抹消したぜ！");
-                      }
-                    } catch (err) {
-                      alert("削除に失敗したぜ。");
+        // ② いいねした投稿（黄ピン）
+        allPosts.forEach((p) => {
+            const lat = p.latitude;
+            const lng = p.longitude;
+            if (myLikes.has(p.id) && lat && lng) {
+                const yellowMarker = L.marker([lat, lng], { icon: icons.yellow }).addTo(map);
+                yellowMarker.on("click", () => {
+                    const ar = document.getElementById("ar-preview");
+                    const arImg = document.getElementById("ar-image");
+                    const arDeleteBtn = document.getElementById("ar-delete");
+                    if (ar && arImg) {
+                        arImg.style.backgroundImage = `url(${p.filepath})`;
+                        ar.classList.remove("hidden");
+                        if (arDeleteBtn) arDeleteBtn.classList.add("hidden");
                     }
-                  };
-                }
-              }
-            });
-          }
+                });
+            }
         });
-      }
 
-      setTimeout(() => {
-        map.invalidateSize();
-        loadingScreen?.classList.add("loading-hidden");
-      }, 500);
+        // ③ 自分の撮った写し絵（青ピン）
+        const j = await api.get("/api/photo/list");
+        if (j.success) {
+            j.photos.forEach((p) => {
+                const lat = p.latitude || p.lat;
+                const lng = p.longitude || p.lng;
+                if (lat && lng) {
+                    const m = L.marker([lat, lng], { icon: icons.blue }).addTo(map);
+                    m.on("click", () => {
+                        const ar = document.getElementById("ar-preview");
+                        const arImg = document.getElementById("ar-image");
+                        const arDeleteBtn = document.getElementById("ar-delete");
+                        if (ar && arImg) {
+                            arImg.style.backgroundImage = `url(${p.filepath})`;
+                            ar.classList.remove("hidden");
+                            if (arDeleteBtn) {
+                                arDeleteBtn.classList.remove("hidden");
+                                arDeleteBtn.onclick = async () => {
+                                    if (!confirm("この場所の記録を蔵から抹消するかい、ブラザー？")) return;
+                                    try {
+                                        const res = await api.del(`/api/photo/${p.id}`);
+                                        if (res.success) {
+                                            ar.classList.add("hidden");
+                                            map.removeLayer(m);
+                                            alert("抹消したぜ！");
+                                        }
+                                    } catch (err) { alert("削除に失敗したぜ。"); }
+                                };
+                            }
+                        }
+                    });
+                }
+            });
+        }
 
-      initCameraSystem();
+        // ✨ 🔥 【新設】AIコンシェルジュボタンを地図右下に追加 🔥 ✨
+        const aiBtnContainer = L.control({ position: 'bottomright' });
+        aiBtnContainer.onAdd = function() {
+            const div = L.DomUtil.create('div', 'ai-recommend-container');
+            div.innerHTML = `
+                <button id="ai-ask-btn" style="
+                    background: linear-gradient(135deg, #ffd700, #ffa500); 
+                    border: 3px solid #fff; 
+                    border-radius: 50%; 
+                    width: 65px; height: 65px; 
+                    font-size: 30px; 
+                    cursor: pointer;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+                    margin-bottom: 20px;
+                    margin-right: 10px;
+                    transition: transform 0.2s;
+                ">✨</button>
+            `;
+            return div;
+        };
+        aiBtnContainer.addTo(map);
+
+        // ✨ AIボタンを押した時のアクション
+        document.getElementById("ai-ask-btn").onclick = async () => {
+            const btn = document.getElementById("ai-ask-btn");
+            const originalText = btn.innerText;
+            btn.innerText = "🤔"; // 思考中アイコン
+            btn.style.transform = "scale(0.9)";
+            btn.disabled = true;
+
+            try {
+                // サーバーのGemini APIを叩く
+                const res = await api.post("/api/ai/recommend");
+                if (res.success && res.id) {
+                    // AIが選んだ投稿を全データから探す
+                    const target = allPosts.find(p => p.id === res.id);
+                    if (target && target.latitude && target.longitude) {
+                        alert(`【AIコンシェルジュの助言】\n\n「おぬしの感性に響く場所を選んだぜ。\n "${target.username}" の残した景色を見に行ってみな！」`);
+                        
+                        // 地図を対象の場所へダイナミックに飛ばす！
+                        map.flyTo([target.latitude, target.longitude], 17, {
+                            animate: true,
+                            duration: 2.5
+                        });
+                    } else {
+                        alert("AI：すまねぇ、場所の特定に失敗したぜ。");
+                    }
+                } else {
+                    alert("AI：今はまだ知恵が足りねぇようだ。他の投稿に『いいね』をして、おぬしの好みを教えてくれ！");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("AIとの通信に失敗したぜ。APIキーの設定を確認してくれ！");
+            } finally {
+                btn.innerText = originalText;
+                btn.style.transform = "scale(1)";
+                btn.disabled = false;
+            }
+        };
+
+        setTimeout(() => {
+            map.invalidateSize();
+            loadingScreen?.classList.add("loading-hidden");
+        }, 500);
+
+        initCameraSystem();
     };
     document.body.appendChild(script);
 
-    // --- 各種ボタンイベントの紐付け ---
+    // --- 各種ボタンイベント ---
     document.getElementById("logout-button").onclick = async () => {
-      await api.post("/api/logout");
-      location.hash = "#login";
+        await api.post("/api/logout");
+        location.hash = "#login";
     };
     document.getElementById("goto-sns").onclick = () => (location.hash = "#sns");
     document.getElementById("goto-folder").onclick = () => (location.hash = "#folder");
@@ -409,7 +456,7 @@ const initMapPage = async () => {
     if (arClose) {
         arClose.onclick = () => document.getElementById("ar-preview").classList.add("hidden");
     }
-  };
+};
   // ==========================================
   // 2. 撮影・落書き・保存 (initCameraSystem)
   // ==========================================
